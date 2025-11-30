@@ -24,6 +24,7 @@ ipython>=8.0.0  # For display, clear_output, HTML
 
 # Image and video processing
 imageio>=2.20.0
+imageio-ffmpeg>=0.4.8  # Required for moviepy video processing
 pillow>=9.0.0  # For PIL.Image
 moviepy>=1.0.3  # For ImageSequenceClip
 
