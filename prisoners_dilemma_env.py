@@ -31,6 +31,7 @@ PAYOFF_MATRIX = np.array([
     [(5, 0), (1, 1)]  # Row for Your Action = Defect (1)
 ])
 
+#Part I: Build the Environment (Implementation)
 class OpponentStrategies:
     """Class containing the logic for the four required opponent strategies."""
 
@@ -91,6 +92,7 @@ class IteratedPrisonersDilemma(gym.Env):
     def __init__(self, opponent_strategy: str, memory_scheme: int = 1):
         super().__init__()
 
+
         # --- Configuration ---
         if opponent_strategy not in self.STRATEGY_MAP:
             raise ValueError(f"Invalid strategy: {opponent_strategy}")
@@ -122,8 +124,6 @@ class IteratedPrisonersDilemma(gym.Env):
         self.current_state = None # The state returned to the agent
         self.current_turn = 0
 
-        pass
-
     def reset(self, seed: Optional[int] = None) -> Tuple[int, dict]:
         """
         Resets the environment for a new episode.
@@ -145,7 +145,256 @@ class IteratedPrisonersDilemma(gym.Env):
         info = {}
         return observation, info
 
-    def _get_obs_from_history(self) -> int:
+    """
+        Evaluates a policy by computing the state-value function.
+        
+        Uses iterative policy evaluation algorithm:
+        1. Initialize V(s) = 0 for all states
+        2. Repeat until convergence:
+           - For each state s:
+             - V_new(s) = Σ_a π(a|s) * Σ_{s'} P(s'|s,a) * [R(s,a,s') + γ * V(s')]
+           - Check convergence: max|V_new(s) - V_old(s)| < theta
+        3. Return converged value function V
+        
+        Args:
+            policy: A policy matrix of shape (num_states, num_actions) representing
+                   the probability of taking each action in each state.
+            gamma: Discount factor for future rewards.
+            theta: Convergence threshold for value function updates.
+        
+        Returns:
+            Value function array of shape (num_states,) representing the expected
+            return for each state under the given policy.
+    """
+    def policy_evaluation(self, policy: np.ndarray, gamma: float = 0.9, theta: float = 1e-6) -> np.ndarray:
+        # Step 1: Get the number of states and actions
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        
+        # Validate policy shape
+        if policy.shape != (num_states, num_actions):
+            raise ValueError(f"Policy shape {policy.shape} does not match expected ({num_states}, {num_actions})")
+        
+        # Step 2: Initialize value function V(s) = 0 for all states
+        V = np.zeros(num_states)
+        
+        # Step 3: Iterate until convergence
+        while True:
+            # Create a new value function for this iteration
+            V_new = np.zeros(num_states)
+            
+            # For each state s in the state space
+            for s in range(num_states):
+                state_value = 0.0
+                
+                # For each action a in the action space
+                for a in range(num_actions):
+                    # Get the policy probability: π(a|s)
+                    policy_prob = policy[s, a]
+                    
+                    # Sum over all possible next states s'
+                    action_value = 0.0
+                    for next_state in range(num_states):
+                        # Get transition probability: P(s'|s,a)
+                        transition_prob = self._get_transition_probability(s, a, next_state)
+                        
+                        # Get immediate reward: R(s,a,s')
+                        reward = self._get_reward(s, a, next_state)
+                        
+                        # Bellman equation component: R(s,a,s') + γ * V(s')
+                        bellman_component = reward + gamma * V[next_state]
+                        
+                        # Weight by transition probability
+                        action_value += transition_prob * bellman_component
+                    
+                    # Weight by policy probability
+                    state_value += policy_prob * action_value
+                
+                # Update value for state s
+                V_new[s] = state_value
+            
+            # Step 4: Check for convergence
+            # Compute the maximum change across all states
+            delta = np.max(np.abs(V_new - V))
+            
+            # If converged (change is less than threshold), break
+            if delta < theta:
+                break
+            
+            # Update value function for next iteration
+            V = V_new.copy()
+        
+        # Step 5: Return the converged value function
+        return V
+
+    def policy_improvement(self, value_function: np.ndarray, gamma: float = 0.9) -> np.ndarray:
+        """
+        Improves a policy by making it greedy with respect to the value function.
+        
+        Args:
+            value_function: A value function array of shape (num_states,) representing
+                          the expected return for each state.
+            gamma: Discount factor for future rewards.
+        
+        Returns:
+            Improved policy matrix of shape (num_states, num_actions) representing
+            the probability of taking each action in each state.
+        """
+        pass
+
+    def policy_iteration(self, gamma: float = 0.9, theta: float = 1e-6) -> Tuple[np.ndarray, np.ndarray]:
+        """
+        Performs policy iteration to find the optimal policy.
+        
+        Iteratively evaluates and improves the policy until convergence.
+        
+        Args:
+            gamma: Discount factor for future rewards.
+            theta: Convergence threshold for value function updates.
+        
+        Returns:
+            A tuple containing:
+            - Optimal policy matrix of shape (num_states, num_actions)
+            - Optimal value function array of shape (num_states,)
+        """
+        pass
+
+    def _get_transition_probability(self, current_state: int, action: int, next_state: int) -> float:
+        """
+        Gets the transition probability P(next_state | state, action).
+        
+        The transition probability depends on the opponent's strategy:
+        - For deterministic opponents (ALL-C, ALL-D, TFT): probability is 1.0 or 0.0
+        - For stochastic opponents (IMPERFECT-TFT): probability is between 0.0 and 1.0
+        
+        Args:
+            state: Current state
+            action: Action taken by the agent
+            next_state: Next state
+        
+        Returns:
+            Transition probability P(s'|s,a)
+        """
+        # Get opponent action probabilities given current state and agent action
+        opp_probs = self._get_opponent_action_probabilities(current_state)
+        
+        # Initialize total probability
+        total_prob = 0.0
+        
+        # For each possible opponent action
+        for opp_action in range(2):  # COOPERATE=0, DEFECT=1
+            # Compute what the next state would be if opponent takes this action
+            computed_next_state = self._compute_next_state(current_state, action, opp_action)
+            
+            # If this matches the desired next_state, add the probability
+            if computed_next_state == next_state:
+                total_prob += opp_probs[opp_action]
+        
+        return total_prob   
+
+    #TODO : mak this clerer
+    #TODO understand the hidtory part
+    def _get_opponent_action_probabilities(self, current_state: int) -> np.ndarray:
+        """
+        Computes the probability distribution over opponent actions given
+        the current state and agent's action.
+        
+        Args:
+            state: Current state
+            agent_action: Agent's action (COOPERATE or DEFECT)
+            
+        Returns:
+            Array of shape (2,) with probabilities [P(opp_cooperate), P(opp_defect)]
+        """
+        # Decode state to history
+        history = self._decode_state_to_history(current_state)
+        
+        # Get strategy name
+        strategy_name = None
+        for name, func in self.STRATEGY_MAP.items():
+            if func == self.opponent_strategy:
+                strategy_name = name
+                break
+        
+        if strategy_name == "ALL-C":
+            return np.array([1.0, 0.0])  # Always cooperate
+        
+        elif strategy_name == "ALL-D":
+            return np.array([0.0, 1.0])  # Always defect
+        
+        elif strategy_name == "TFT":
+            # Deterministic: copies agent's previous move
+            if not history:
+                # Initial state: starts with C
+                return np.array([1.0, 0.0])
+            # TFT copies agent's previous move (first element of last history entry)
+            agent_prev = history[-1][0]
+            if agent_prev == COOPERATE:
+                return np.array([1.0, 0.0])
+            else:
+                return np.array([0.0, 1.0])
+        
+        elif strategy_name == "IMPERFECT-TFT":
+            # Stochastic: 90% copy, 10% opposite
+            if not history:
+                # Initial state: starts with C
+                return np.array([1.0, 0.0])
+            
+            agent_prev = history[-1][0]
+            if agent_prev == COOPERATE:
+                # 90% copy (C), 10% opposite (D)
+                return np.array([0.9, 0.1])
+            else:
+                # 90% copy (D), 10% opposite (C)
+                return np.array([0.1, 0.9])
+        
+        # Default: should not reach here
+        return np.array([0.5, 0.5])
+
+    def _compute_next_state(self, current_state: int, agent_action: int, opp_action: int) -> int:
+        """
+        Computes the next state given current state and both actions.
+        
+        Args:
+            current_state: Current state integer
+            agent_action: Agent's action
+            opp_action: Opponent's action
+            
+        Returns:
+            Next state integer
+        """
+        if self.memory_scheme == 1:
+            # Memory-1: state encodes (A_t-1, O_t-1)
+            # Next state encodes (agent_action, opp_action)
+            # Encoding: A*2 + O
+            return agent_action * 2 + opp_action
+        else:
+            # Memory-2: current state encodes [A_t-1, O_t-1, A_t-2, O_t-2]
+            # Next state encodes [agent_action, opp_action, A_t-1, O_t-1]
+            # Decode current state
+            A_t1 = (current_state >> 3) & 1  # Most significant bit
+            O_t1 = (current_state >> 2) & 1
+            # A_t2 and O_t2 are not needed for next state
+            
+            # Encode next state: [agent_action, opp_action, A_t1, O_t1]
+            next_state = (agent_action << 3) + (opp_action << 2) + (A_t1 << 1) + O_t1
+            return next_state
+
+    def _get_reward(self, state: int, action: int, next_state: int) -> float:
+        """
+        Gets the immediate reward for taking action in state and transitioning to next_state.
+        
+        Args:
+            state: Current state
+            action: Action taken by the agent
+            next_state: Next state after taking the action
+        
+        Returns:
+            Immediate reward value
+        """
+        pass
+
+        def _get_obs_from_history(self) -> int:
             """
             Converts the internal history into the state (observation) 
             according to the configured memory scheme.
@@ -193,3 +442,37 @@ class IteratedPrisonersDilemma(gym.Env):
                     state_int += move * (2**(len(state_vector) - 1 - i))
                 
                 return state_int
+
+    def _decode_state_to_history(self, state: int) -> list:
+        """
+        Decodes a state integer back to a history format that can be used
+        by opponent strategies.
+        
+        Args:
+            state: The encoded state integer
+            
+        Returns:
+            A history list in the format [(agent_move, opp_move), ...]
+        """
+        if self.memory_scheme == 1:
+            # Memory-1: state encodes (A_t-1, O_t-1)
+            # state = A*2 + O
+            # (0, 0) -> 0 | (0, 1) -> 1 | (1, 0) -> 2 | (1, 1) -> 3
+            agent_prev = state // 2
+            opp_prev = state % 2
+            return [(agent_prev, opp_prev)]
+        else:
+            # Memory-2: state encodes [A_t-1, O_t-1, A_t-2, O_t-2]
+            # Decode binary representation
+            state_vector = []
+            temp = state
+            for i in range(4):
+                bit = temp % 2
+                state_vector.insert(0, bit)
+                temp = temp // 2
+            
+            # state_vector = [A_t1, O_t1, A_t2, O_t2]
+            A_t1, O_t1, A_t2, O_t2 = state_vector
+            
+            # Return history with last two moves (older first, newer last)
+            return [(A_t2, O_t2), (A_t1, O_t1)]
