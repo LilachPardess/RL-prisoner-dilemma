@@ -292,22 +292,63 @@ class IteratedPrisonersDilemma(gym.Env):
         
         return new_policy
 
-    def policy_iteration(self, gamma: float = 0.9, theta: float = 1e-6) -> Tuple[np.ndarray, np.ndarray]:
+    def policy_iteration(self, gamma: float = 0.9, theta: float = 1e-6, max_iterations: int = 1000) -> Tuple[np.ndarray, np.ndarray]:
         """
         Performs policy iteration to find the optimal policy.
         
         Iteratively evaluates and improves the policy until convergence.
         
+        Algorithm:
+        1. Initialize a random policy (uniform distribution over actions)
+        2. Repeat until policy converges or max_iterations reached:
+           a. Policy Evaluation: Evaluate current policy to get V(s)
+           b. Policy Improvement: Make policy greedy with respect to V(s)
+           c. Check if policy changed - if not, converged
+        3. Return optimal policy and value function
+        
         Args:
             gamma: Discount factor for future rewards.
             theta: Convergence threshold for value function updates.
+            max_iterations: Maximum number of policy iteration steps to perform.
         
         Returns:
             A tuple containing:
             - Optimal policy matrix of shape (num_states, num_actions)
             - Optimal value function array of shape (num_states,)
+        
+        Raises:
+            RuntimeError: If max_iterations is reached before convergence.
         """
-        pass
+        # Step 1: Get the number of states and actions
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        
+        # Step 2: Initialize policy uniformly (equal probability for all actions)
+        policy = np.ones((num_states, num_actions)) / num_actions
+        
+        # Step 3: Policy iteration loop
+        iteration = 0
+        while True:
+            # Check if we've exceeded max iterations
+            if iteration >= max_iterations:
+                raise RuntimeError(f"Policy iteration did not converge within {max_iterations} iterations.")
+            
+            # Step 3a: Policy Evaluation - evaluate current policy
+            value_function = self.policy_evaluation(policy, gamma, theta)
+            
+            # Step 3b: Policy Improvement - make policy greedy with respect to value function
+            new_policy = self.policy_improvement(value_function, gamma)
+            
+            # Step 3c: Check for convergence - if policy hasn't changed, we're done
+            if np.allclose(policy, new_policy):
+                break
+            
+            # Update policy for next iteration
+            policy = new_policy.copy()
+            iteration += 1
+        
+        # Step 4: Return optimal policy and value function
+        return policy, value_function
 
     def _get_transition_probability(self, current_state: int, action: int, next_state: int) -> float:
         """
