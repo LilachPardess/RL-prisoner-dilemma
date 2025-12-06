@@ -87,9 +87,9 @@ class IteratedPrisonersDilemma(gym.Env):
         "ALL-D": OpponentStrategies.all_d,
         "TFT": OpponentStrategies.tit_for_tat,
         "IMPERFECT-TFT": OpponentStrategies.imperfect_tit_for_tat,
-    }
-
-    def __init__(self, opponent_strategy: str, memory_scheme: int = 1):
+    } 
+ 
+    def __init__(self, opponent_strategy: str, memory_scheme: int = 1): 
         super().__init__()
 
 
@@ -123,8 +123,8 @@ class IteratedPrisonersDilemma(gym.Env):
         self.history = [] 
         self.current_state = None # The state returned to the agent
         self.current_turn = 0
-
-    def reset(self, seed: Optional[int] = None) -> Tuple[int, dict]:
+ 
+    def reset(self, seed: Optional[int] = None) -> Tuple[int, dict]: 
         """
         Resets the environment for a new episode.
         
@@ -144,7 +144,7 @@ class IteratedPrisonersDilemma(gym.Env):
         # Return observation and info dictionary
         info = {}
         return observation, info
-
+ 
     """
         Evaluates a policy by computing the state-value function.
         
@@ -292,7 +292,7 @@ class IteratedPrisonersDilemma(gym.Env):
         
         return new_policy
 
-    def policy_iteration(self, gamma: float = 0.9, theta: float = 1e-6, max_iterations: int = 1000) -> Tuple[np.ndarray, np.ndarray]:
+    def policy_iteration(self, gamma: float = 0.9, theta: float = 0.0, max_iterations: int = 100) -> Tuple[np.ndarray, np.ndarray]:
         """
         Performs policy iteration to find the optimal policy.
         
@@ -498,7 +498,7 @@ class IteratedPrisonersDilemma(gym.Env):
         # Get reward from payoff matrix: PAYOFF_MATRIX[agent_action][opp_action][0]
         # The [0] index gets the agent's payoff (first element of the tuple)
         reward = PAYOFF_MATRIX[action][opp_action][0]
-        return float(reward)
+        return float(reward) * -1
 
     def _decode_state_to_history(self, state: int) -> list:
         """
