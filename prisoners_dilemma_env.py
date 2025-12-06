@@ -392,56 +392,22 @@ class IteratedPrisonersDilemma(gym.Env):
         Returns:
             Immediate reward value
         """
-        pass
-
-        def _get_obs_from_history(self) -> int:
-            """
-            Converts the internal history into the state (observation) 
-            according to the configured memory scheme.
-            """
-            # A. Memory-1: See the outcome of the previous round (Agent's move t-1, Opponent's move t-1)
-            if self.memory_scheme == 1:
-                # history[-1] is (agent_move_t-1, opp_move_t-1)
-                # Encode (A, O) into a single integer: A*2 + O
-                # (0, 0) -> 0 | (0, 1) -> 1 | (1, 0) -> 2 | (1, 1) -> 3
-                if not self.history:
-                    # Start State: (C, C) -> (0, 0) -> 0
-                    return 0
-                
-                agent_prev, opp_prev = self.history[-1]
-                return agent_prev * 2 + opp_prev
-
-            # B. Memory-2: See last two moves (A_t-1, O_t-1, A_t-2, O_t-2)
-            else: # memory_scheme == 2
-                # The state vector has 4 components: 
-                # [A_t-1, O_t-1, A_t-2, O_t-2]
-                
-                # Start State: (C, C, C, C) -> (0, 0, 0, 0)
-                # If the history has fewer than 2 rounds, we pad with (C, C) = (0, 0)
-                
-                # Round t-1
-                if len(self.history) >= 1:
-                    A_t1, O_t1 = self.history[-1]
-                else:
-                    A_t1, O_t1 = COOPERATE, COOPERATE # Padding (C, C)
-
-                # Round t-2
-                if len(self.history) >= 2:
-                    A_t2, O_t2 = self.history[-2]
-                else:
-                    A_t2, O_t2 = COOPERATE, COOPERATE # Padding (C, C)
-                
-                # State vector: [A_t1, O_t1, A_t2, O_t2]
-                state_vector = [A_t1, O_t1, A_t2, O_t2]
-                
-                # Binary-to-decimal encoding (MSB is A_t1)
-                # This maps the 16 possible vectors to integers 0-15
-                # e.g., (1, 0, 0, 0) -> 8 | (0, 0, 0, 0) -> 0 | (1, 1, 1, 1) -> 15
-                state_int = 0
-                for i, move in enumerate(state_vector):
-                    state_int += move * (2**(len(state_vector) - 1 - i))
-                
-                return state_int
+        # Extract opponent's action from next_state
+        # For memory-1: next_state = agent_action * 2 + opp_action
+        # For memory-2: next_state encodes [agent_action, opp_action, A_t-1, O_t-1]
+        if self.memory_scheme == 1:
+            # Memory-1: next_state encodes (agent_action, opp_action)
+            # Extract opponent action: opp_action = next_state % 2
+            opp_action = next_state % 2
+        else:
+            # Memory-2: next_state encodes [agent_action, opp_action, A_t-1, O_t-1]
+            # Extract opponent action from second bit: (next_state >> 2) & 1
+            opp_action = (next_state >> 2) & 1
+        
+        # Get reward from payoff matrix: PAYOFF_MATRIX[agent_action][opp_action][0]
+        # The [0] index gets the agent's payoff (first element of the tuple)
+        reward = PAYOFF_MATRIX[action][opp_action][0]
+        return float(reward)
 
     def _decode_state_to_history(self, state: int) -> list:
         """
