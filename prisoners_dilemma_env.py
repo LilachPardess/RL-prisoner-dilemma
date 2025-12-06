@@ -240,7 +240,57 @@ class IteratedPrisonersDilemma(gym.Env):
             Improved policy matrix of shape (num_states, num_actions) representing
             the probability of taking each action in each state.
         """
-        pass
+        # Step 1: Get the number of states and actions
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        
+        # Validate value function shape
+        if value_function.shape != (num_states,):
+            raise ValueError(f"Value function shape {value_function.shape} does not match expected ({num_states},)")
+        
+        # Step 2: Initialize new policy matrix
+        new_policy = np.zeros((num_states, num_actions))
+        
+        # Step 3: For each state, compute Q-values and make policy greedy
+        for s in range(num_states):
+            # Compute Q(s,a) for each action a
+            q_values = np.zeros(num_actions)
+            
+            for a in range(num_actions):
+                # Q(s,a) = Σ_{s'} P(s'|s,a) * [R(s,a,s') + γ * V(s')]
+                q_value = 0.0
+                for next_state in range(num_states):
+                    # Get transition probability: P(s'|s,a)
+                    transition_prob = self._get_transition_probability(s, a, next_state)
+                    
+                    # Get immediate reward: R(s,a,s')
+                    reward = self._get_reward(s, a, next_state)
+                    
+                    # Bellman equation component: R(s,a,s') + γ * V(s')
+                    bellman_component = reward + gamma * value_function[next_state]
+                    
+                    # Weight by transition probability
+                    q_value += transition_prob * bellman_component
+                
+                q_values[a] = q_value
+            
+            # Step 4: Make policy greedy - find action(s) with maximum Q-value
+            best_actions = np.where(q_values == np.max(q_values))[0]
+            
+            # Ensure we have at least one best action
+            if len(best_actions) == 0:
+                raise RuntimeError(f"No best action found for state {s}. Q-values: {q_values}")
+            
+            # If multiple actions have the same maximum Q-value, distribute probability equally
+            # Otherwise, set probability to 1.0 for the best action
+            for best_action in best_actions:
+                new_policy[s, best_action] = 1.0 / len(best_actions)
+        
+        # Step 5: Return the improved policy (ensure it's not None)
+        if new_policy is None:
+            raise RuntimeError("new_policy is None - this should never happen!")
+        
+        return new_policy
 
     def policy_iteration(self, gamma: float = 0.9, theta: float = 1e-6) -> Tuple[np.ndarray, np.ndarray]:
         """
