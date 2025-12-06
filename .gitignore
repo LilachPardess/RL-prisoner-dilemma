@@ -36,84 +36,8 @@ MANIFEST
 .ipynb_checkpoints
 *.ipynb_checkpoints/
 
-# PyCharm
-.idea/
-
-# VS Code
-.vscode/
-*.code-workspace
-
 # macOS
 .DS_Store
 .AppleDouble
 .LSOverride
 ._*
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini
-$RECYCLE.BIN/
-
-# Model files and checkpoints
-*.pkl
-*.h5
-*.ckpt
-*.pt
-*.pth
-models/
-checkpoints/
-weights/
-
-# Data files (uncomment if you don't want to track data)
-# *.csv
-# *.json
-# data/
-# datasets/
-
-# Logs and outputs
-*.log
-logs/
-outputs/
-results/
-experiments/results/
-*.png
-*.jpg
-*.gif
-*.mp4
-*.avi
-*.mov
-
-# Environment variables
-.env
-.env.local
-.env.*.local
-
-# Temporary files
-*.tmp
-*.temp
-*.swp
-*.swo
-*~
-.cache/
-
-# pytest
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-
-# mypy
-.mypy_cache/
-.dmypy.json
-dmypy.json
-
-# IPython
-.ipython/
-
-# MoviePy temporary files
-*.mp4.tmp
-
-# Google Colab (if syncing)
-.drive/
-
