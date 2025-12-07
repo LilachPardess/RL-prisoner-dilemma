@@ -144,6 +144,158 @@ class IteratedPrisonersDilemma(gym.Env):
         # Return observation and info dictionary
         info = {}
         return observation, info
+
+    def _get_obs_from_history(self) -> int:
+        """
+        Converts the current history to an observation/state.
+        
+        Returns:
+            Observation integer representing the current state
+        """
+        if not self.history:
+            # Initial state: assume previous was (C, C)
+            # For memory-1: (C, C) = 0*2 + 0 = 0
+            # For memory-2: need to encode [C, C, C, C] = 0
+            if self.memory_scheme == 1:
+                return 0
+            else:
+                # Memory-2: [A_t-1=0, O_t-1=0, A_t-2=0, O_t-2=0] = 0
+                return 0
+        
+        if self.memory_scheme == 1:
+            # Memory-1: state encodes (A_t-1, O_t-1)
+            # Get the last move from history
+            agent_prev, opp_prev = self.history[-1]
+            return agent_prev * 2 + opp_prev
+        else:
+            # Memory-2: state encodes [A_t-1, O_t-1, A_t-2, O_t-2]
+            if len(self.history) == 1:
+                # Only one move in history, assume previous was (C, C)
+                A_t1, O_t1 = self.history[-1]
+                A_t2, O_t2 = COOPERATE, COOPERATE
+            else:
+                # Two or more moves: use last two
+                A_t1, O_t1 = self.history[-1]
+                A_t2, O_t2 = self.history[-2]
+            
+            # Encode: [A_t1, O_t1, A_t2, O_t2]
+            state = (A_t1 << 3) + (O_t1 << 2) + (A_t2 << 1) + O_t2
+            return state
+
+    def step(self, action: int) -> Tuple[int, float, bool, bool, dict]:
+        """
+        Executes one step in the environment.
+        
+        Args:
+            action: The action to take (COOPERATE=0 or DEFECT=1)
+        
+        Returns:
+            A tuple containing:
+            - observation: Next state observation
+            - reward: Reward received for this step
+            - terminated: Whether the episode has terminated
+            - truncated: Whether the episode was truncated
+            - info: Additional information dictionary
+        """
+        # Validate action
+        if action not in [COOPERATE, DEFECT]:
+            raise ValueError(f"Invalid action: {action}. Must be {COOPERATE} (COOPERATE) or {DEFECT} (DEFECT)")
+        
+        # Get opponent's action based on current history
+        opp_action = self.opponent_strategy(self.history)
+        
+        # Update history with current moves
+        self.history.append((action, opp_action))
+        
+        # Get current state before updating
+        current_state = self.current_state
+        
+        # Compute next state
+        next_state = self._compute_next_state(current_state, action, opp_action)
+        self.current_state = next_state
+        
+        # Get reward (note: _get_reward uses next_state to extract opponent action)
+        reward = self._get_reward(current_state, action, next_state)
+        
+        # Update turn counter
+        self.current_turn += 1
+        
+        # Episode never terminates (infinite horizon)
+        terminated = False
+        truncated = False
+        
+        # Info dictionary
+        info = {
+            "agent_action": action,
+            "opponent_action": opp_action,
+            "turn": self.current_turn
+        }
+        
+        return next_state, reward, terminated, truncated, info
+
+    def play_policy(self, policy: np.ndarray, num_steps: int = 50) -> Dict[str, Any]:
+        """
+        Plays the game for a specified number of steps using the given policy.
+        
+        Args:
+            policy: Policy matrix of shape (num_states, num_actions) representing
+                   the probability of taking each action in each state.
+            num_steps: Number of steps to play (default: 50)
+        
+        Returns:
+            Dictionary containing cumulative results:
+            - cumulative_reward: Total reward accumulated
+            - rewards: List of rewards for each step
+            - actions: List of actions taken by the agent
+            - opponent_actions: List of actions taken by the opponent
+            - history: Full history of moves
+        """
+        # Validate policy shape
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        if policy.shape != (num_states, num_actions):
+            raise ValueError(f"Policy shape {policy.shape} does not match expected ({num_states}, {num_actions})")
+        
+        # Reset environment
+        observation, _ = self.reset()
+        
+        # Initialize tracking variables
+        cumulative_reward = 0.0
+        rewards = []
+        actions = []
+        opponent_actions = []
+        
+        # Play for num_steps
+        for step in range(num_steps):
+            # Get current state
+            current_state = observation
+            
+            # Sample action from policy
+            action_probs = policy[current_state]
+            action = np.random.choice(num_actions, p=action_probs)
+            
+            # Take step in environment
+            observation, reward, terminated, truncated, info = self.step(action)
+            
+            # Track results
+            cumulative_reward += reward
+            rewards.append(reward)
+            actions.append(action)
+            opponent_actions.append(info["opponent_action"])
+            
+            # Check if episode ended (shouldn't happen in this environment, but check anyway)
+            if terminated or truncated:
+                break
+        
+        # Return cumulative results
+        return {
+            "cumulative_reward": cumulative_reward,
+            "rewards": rewards,
+            "actions": actions,
+            "opponent_actions": opponent_actions,
+            "history": self.history.copy(),
+            "num_steps": len(rewards)
+        }
  
     """
         Evaluates a policy by computing the state-value function.
