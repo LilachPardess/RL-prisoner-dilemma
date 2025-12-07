@@ -296,6 +296,46 @@ class IteratedPrisonersDilemma(gym.Env):
             "history": self.history.copy(),
             "num_steps": len(rewards)
         }
+
+    def test_against_random(self, policy: np.ndarray, num_steps: int = 100) -> Dict[str, Any]:
+        """
+        Tests a given policy against a random policy (uniform 50/50).
+        
+        Args:
+            policy: Policy matrix of shape (num_states, num_actions) to test
+            num_steps: Number of steps to play (default: 100)
+        
+        Returns:
+            Dictionary containing comparison results:
+            - policy_reward: Cumulative reward of the given policy
+            - random_reward: Cumulative reward of the random policy
+            - difference: Difference between policy and random rewards
+            - policy_results: Full results from playing the given policy
+            - random_results: Full results from playing the random policy
+        """
+        # Validate policy shape
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        if policy.shape != (num_states, num_actions):
+            raise ValueError(f"Policy shape {policy.shape} does not match expected ({num_states}, {num_actions})")
+        
+        # Create random policy (uniform 50/50 for each state)
+        random_policy = np.ones((num_states, num_actions)) / num_actions
+        
+        # Play both policies
+        policy_results = self.play_policy(policy, num_steps=num_steps)
+        random_results = self.play_policy(random_policy, num_steps=num_steps)
+        
+        # Calculate difference
+        difference = policy_results['cumulative_reward'] - random_results['cumulative_reward']
+        
+        return {
+            "policy_reward": policy_results['cumulative_reward'],
+            "random_reward": random_results['cumulative_reward'],
+            "difference": difference,
+            "policy_results": policy_results,
+            "random_results": random_results
+        }
  
     """
         Evaluates a policy by computing the state-value function.
