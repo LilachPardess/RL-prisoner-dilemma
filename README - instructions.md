@@ -85,7 +85,7 @@ Implement Tabular Policy Iteration from scratch (do not use a library like stand
 
 ## 5. Part IV: Experiments & Analysis
 
-Run experiments varying the Discount Factor and the Opponent type.
+Run experiments varying the Discount Factor [0.1, 0.5, 0.9, 0.99] and the Opponent type.
 
 ### Simulation Verification
 

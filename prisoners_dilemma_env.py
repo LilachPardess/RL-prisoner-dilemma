@@ -87,9 +87,9 @@ class IteratedPrisonersDilemma(gym.Env):
         "ALL-D": OpponentStrategies.all_d,
         "TFT": OpponentStrategies.tit_for_tat,
         "IMPERFECT-TFT": OpponentStrategies.imperfect_tit_for_tat,
-    }
-
-    def __init__(self, opponent_strategy: str, memory_scheme: int = 1):
+    } 
+ 
+    def __init__(self, opponent_strategy: str, memory_scheme: int = 1): 
         super().__init__()
 
 
@@ -123,8 +123,8 @@ class IteratedPrisonersDilemma(gym.Env):
         self.history = [] 
         self.current_state = None # The state returned to the agent
         self.current_turn = 0
-
-    def reset(self, seed: Optional[int] = None) -> Tuple[int, dict]:
+ 
+    def reset(self, seed: Optional[int] = None) -> Tuple[int, dict]: 
         """
         Resets the environment for a new episode.
         
@@ -145,6 +145,198 @@ class IteratedPrisonersDilemma(gym.Env):
         info = {}
         return observation, info
 
+    def _get_obs_from_history(self) -> int:
+        """
+        Converts the current history to an observation/state.
+        
+        Returns:
+            Observation integer representing the current state
+        """
+        if not self.history:
+            # Initial state: assume previous was (C, C)
+            # For memory-1: (C, C) = 0*2 + 0 = 0
+            # For memory-2: need to encode [C, C, C, C] = 0
+            if self.memory_scheme == 1:
+                return 0
+            else:
+                # Memory-2: [A_t-1=0, O_t-1=0, A_t-2=0, O_t-2=0] = 0
+                return 0
+        
+        if self.memory_scheme == 1:
+            # Memory-1: state encodes (A_t-1, O_t-1)
+            # Get the last move from history
+            agent_prev, opp_prev = self.history[-1]
+            return agent_prev * 2 + opp_prev
+        else:
+            # Memory-2: state encodes [A_t-1, O_t-1, A_t-2, O_t-2]
+            if len(self.history) == 1:
+                # Only one move in history, assume previous was (C, C)
+                A_t1, O_t1 = self.history[-1]
+                A_t2, O_t2 = COOPERATE, COOPERATE
+            else:
+                # Two or more moves: use last two
+                A_t1, O_t1 = self.history[-1]
+                A_t2, O_t2 = self.history[-2]
+            
+            # Encode: [A_t1, O_t1, A_t2, O_t2]
+            state = (A_t1 << 3) + (O_t1 << 2) + (A_t2 << 1) + O_t2
+            return state
+
+    def step(self, action: int) -> Tuple[int, float, bool, bool, dict]:
+        """
+        Executes one step in the environment.
+        
+        Args:
+            action: The action to take (COOPERATE=0 or DEFECT=1)
+        
+        Returns:
+            A tuple containing:
+            - observation: Next state observation
+            - reward: Reward received for this step
+            - terminated: Whether the episode has terminated
+            - truncated: Whether the episode was truncated
+            - info: Additional information dictionary
+        """
+        # Validate action
+        if action not in [COOPERATE, DEFECT]:
+            raise ValueError(f"Invalid action: {action}. Must be {COOPERATE} (COOPERATE) or {DEFECT} (DEFECT)")
+        
+        # Get opponent's action based on current history
+        opp_action = self.opponent_strategy(self.history)
+        
+        # Update history with current moves
+        self.history.append((action, opp_action))
+        
+        # Get current state before updating
+        current_state = self.current_state
+        
+        # Compute next state
+        next_state = self._compute_next_state(current_state, action, opp_action)
+        self.current_state = next_state
+        
+        # Get reward (note: _get_reward uses next_state to extract opponent action)
+        reward = self._get_reward(current_state, action, next_state)
+        
+        # Update turn counter
+        self.current_turn += 1
+        
+        # Episode never terminates (infinite horizon)
+        terminated = False
+        truncated = False
+        
+        # Info dictionary
+        info = {
+            "agent_action": action,
+            "opponent_action": opp_action,
+            "turn": self.current_turn
+        }
+        
+        return next_state, reward, terminated, truncated, info
+
+    def play_policy(self, policy: np.ndarray, num_steps: int = 50) -> Dict[str, Any]:
+        """
+        Plays the game for a specified number of steps using the given policy.
+        
+        Args:
+            policy: Policy matrix of shape (num_states, num_actions) representing
+                   the probability of taking each action in each state.
+            num_steps: Number of steps to play (default: 50)
+        
+        Returns:
+            Dictionary containing cumulative results:
+            - cumulative_reward: Total reward accumulated
+            - rewards: List of rewards for each step
+            - actions: List of actions taken by the agent
+            - opponent_actions: List of actions taken by the opponent
+            - history: Full history of moves
+        """
+        # Validate policy shape
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        if policy.shape != (num_states, num_actions):
+            raise ValueError(f"Policy shape {policy.shape} does not match expected ({num_states}, {num_actions})")
+        
+        # Reset environment
+        observation, _ = self.reset()
+        
+        # Initialize tracking variables
+        cumulative_reward = 0.0
+        rewards = []
+        actions = []
+        opponent_actions = []
+        
+        # Play for num_steps
+        for step in range(num_steps):
+            # Get current state
+            current_state = observation
+            
+            # Sample action from policy
+            action_probs = policy[current_state]
+            action = np.random.choice(num_actions, p=action_probs)
+            
+            # Take step in environment
+            observation, reward, terminated, truncated, info = self.step(action)
+            
+            # Track results
+            cumulative_reward += reward
+            rewards.append(reward)
+            actions.append(action)
+            opponent_actions.append(info["opponent_action"])
+            
+            # Check if episode ended (shouldn't happen in this environment, but check anyway)
+            if terminated or truncated:
+                break
+        
+        # Return cumulative results
+        return {
+            "cumulative_reward": cumulative_reward,
+            "rewards": rewards,
+            "actions": actions,
+            "opponent_actions": opponent_actions,
+            "history": self.history.copy(),
+            "num_steps": len(rewards)
+        }
+
+    def test_against_random(self, policy: np.ndarray, num_steps: int = 100) -> Dict[str, Any]:
+        """
+        Tests a given policy against a random policy (uniform 50/50).
+        
+        Args:
+            policy: Policy matrix of shape (num_states, num_actions) to test
+            num_steps: Number of steps to play (default: 100)
+        
+        Returns:
+            Dictionary containing comparison results:
+            - policy_reward: Cumulative reward of the given policy
+            - random_reward: Cumulative reward of the random policy
+            - difference: Difference between policy and random rewards
+            - policy_results: Full results from playing the given policy
+            - random_results: Full results from playing the random policy
+        """
+        # Validate policy shape
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        if policy.shape != (num_states, num_actions):
+            raise ValueError(f"Policy shape {policy.shape} does not match expected ({num_states}, {num_actions})")
+        
+        # Create random policy (uniform 50/50 for each state)
+        random_policy = np.ones((num_states, num_actions)) / num_actions
+        
+        # Play both policies
+        policy_results = self.play_policy(policy, num_steps=num_steps)
+        random_results = self.play_policy(random_policy, num_steps=num_steps)
+        
+        # Calculate difference
+        difference = policy_results['cumulative_reward'] - random_results['cumulative_reward']
+        
+        return {
+            "policy_reward": policy_results['cumulative_reward'],
+            "random_reward": random_results['cumulative_reward'],
+            "difference": difference,
+            "policy_results": policy_results,
+            "random_results": random_results
+        }
+ 
     """
         Evaluates a policy by computing the state-value function.
         
@@ -240,24 +432,115 @@ class IteratedPrisonersDilemma(gym.Env):
             Improved policy matrix of shape (num_states, num_actions) representing
             the probability of taking each action in each state.
         """
-        pass
+        # Step 1: Get the number of states and actions
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        
+        # Validate value function shape
+        if value_function.shape != (num_states,):
+            raise ValueError(f"Value function shape {value_function.shape} does not match expected ({num_states},)")
+        
+        # Step 2: Initialize new policy matrix
+        new_policy = np.zeros((num_states, num_actions))
+        
+        # Step 3: For each state, compute Q-values and make policy greedy
+        for s in range(num_states):
+            # Compute Q(s,a) for each action a
+            q_values = np.zeros(num_actions)
+            
+            for a in range(num_actions):
+                # Q(s,a) = Σ_{s'} P(s'|s,a) * [R(s,a,s') + γ * V(s')]
+                q_value = 0.0
+                for next_state in range(num_states):
+                    # Get transition probability: P(s'|s,a)
+                    transition_prob = self._get_transition_probability(s, a, next_state)
+                    
+                    # Get immediate reward: R(s,a,s')
+                    reward = self._get_reward(s, a, next_state)
+                    
+                    # Bellman equation component: R(s,a,s') + γ * V(s')
+                    bellman_component = reward + gamma * value_function[next_state]
+                    
+                    # Weight by transition probability
+                    q_value += transition_prob * bellman_component
+                
+                q_values[a] = q_value
+            
+            # Step 4: Make policy greedy - find action(s) with maximum Q-value
+            best_actions = np.where(q_values == np.max(q_values))[0]
+            
+            # Ensure we have at least one best action
+            if len(best_actions) == 0:
+                raise RuntimeError(f"No best action found for state {s}. Q-values: {q_values}")
+            
+            # If multiple actions have the same maximum Q-value, distribute probability equally
+            # Otherwise, set probability to 1.0 for the best action
+            for best_action in best_actions:
+                new_policy[s, best_action] = 1.0 / len(best_actions)
+        
+        # Step 5: Return the improved policy (ensure it's not None)
+        if new_policy is None:
+            raise RuntimeError("new_policy is None - this should never happen!")
+        
+        return new_policy
 
-    def policy_iteration(self, gamma: float = 0.9, theta: float = 1e-6) -> Tuple[np.ndarray, np.ndarray]:
+    def policy_iteration(self, gamma: float = 0.9, theta: float = 0.0, max_iterations: int = 100) -> Tuple[np.ndarray, np.ndarray]:
         """
         Performs policy iteration to find the optimal policy.
         
         Iteratively evaluates and improves the policy until convergence.
         
+        Algorithm:
+        1. Initialize a random policy (uniform distribution over actions)
+        2. Repeat until policy converges or max_iterations reached:
+           a. Policy Evaluation: Evaluate current policy to get V(s)
+           b. Policy Improvement: Make policy greedy with respect to V(s)
+           c. Check if policy changed - if not, converged
+        3. Return optimal policy and value function
+        
         Args:
             gamma: Discount factor for future rewards.
             theta: Convergence threshold for value function updates.
+            max_iterations: Maximum number of policy iteration steps to perform.
         
         Returns:
             A tuple containing:
             - Optimal policy matrix of shape (num_states, num_actions)
             - Optimal value function array of shape (num_states,)
+        
+        Raises:
+            RuntimeError: If max_iterations is reached before convergence.
         """
-        pass
+        # Step 1: Get the number of states and actions
+        num_states = self.observation_space.n
+        num_actions = self.action_space.n
+        
+        # Step 2: Initialize policy uniformly (equal probability for all actions)
+        policy = np.ones((num_states, num_actions)) / num_actions
+        
+        # Step 3: Policy iteration loop
+        iteration = 0
+        while True:
+            # Check if we've exceeded max iterations
+            if iteration >= max_iterations:
+                raise RuntimeError(f"Policy iteration did not converge within {max_iterations} iterations.")
+            
+            # Step 3a: Policy Evaluation - evaluate current policy
+            value_function = self.policy_evaluation(policy, gamma, theta)
+            
+            # Step 3b: Policy Improvement - make policy greedy with respect to value function
+            new_policy = self.policy_improvement(value_function, gamma)
+            
+            # Step 3c: Check for convergence - if policy hasn't changed, we're done
+            if np.allclose(policy, new_policy):
+                break
+            
+            # Update policy for next iteration
+            policy = new_policy.copy()
+            iteration += 1
+        
+        # Step 4: Return optimal policy and value function
+        return policy, value_function
 
     def _get_transition_probability(self, current_state: int, action: int, next_state: int) -> float:
         """
@@ -392,56 +675,22 @@ class IteratedPrisonersDilemma(gym.Env):
         Returns:
             Immediate reward value
         """
-        pass
-
-        def _get_obs_from_history(self) -> int:
-            """
-            Converts the internal history into the state (observation) 
-            according to the configured memory scheme.
-            """
-            # A. Memory-1: See the outcome of the previous round (Agent's move t-1, Opponent's move t-1)
-            if self.memory_scheme == 1:
-                # history[-1] is (agent_move_t-1, opp_move_t-1)
-                # Encode (A, O) into a single integer: A*2 + O
-                # (0, 0) -> 0 | (0, 1) -> 1 | (1, 0) -> 2 | (1, 1) -> 3
-                if not self.history:
-                    # Start State: (C, C) -> (0, 0) -> 0
-                    return 0
-                
-                agent_prev, opp_prev = self.history[-1]
-                return agent_prev * 2 + opp_prev
-
-            # B. Memory-2: See last two moves (A_t-1, O_t-1, A_t-2, O_t-2)
-            else: # memory_scheme == 2
-                # The state vector has 4 components: 
-                # [A_t-1, O_t-1, A_t-2, O_t-2]
-                
-                # Start State: (C, C, C, C) -> (0, 0, 0, 0)
-                # If the history has fewer than 2 rounds, we pad with (C, C) = (0, 0)
-                
-                # Round t-1
-                if len(self.history) >= 1:
-                    A_t1, O_t1 = self.history[-1]
-                else:
-                    A_t1, O_t1 = COOPERATE, COOPERATE # Padding (C, C)
-
-                # Round t-2
-                if len(self.history) >= 2:
-                    A_t2, O_t2 = self.history[-2]
-                else:
-                    A_t2, O_t2 = COOPERATE, COOPERATE # Padding (C, C)
-                
-                # State vector: [A_t1, O_t1, A_t2, O_t2]
-                state_vector = [A_t1, O_t1, A_t2, O_t2]
-                
-                # Binary-to-decimal encoding (MSB is A_t1)
-                # This maps the 16 possible vectors to integers 0-15
-                # e.g., (1, 0, 0, 0) -> 8 | (0, 0, 0, 0) -> 0 | (1, 1, 1, 1) -> 15
-                state_int = 0
-                for i, move in enumerate(state_vector):
-                    state_int += move * (2**(len(state_vector) - 1 - i))
-                
-                return state_int
+        # Extract opponent's action from next_state
+        # For memory-1: next_state = agent_action * 2 + opp_action
+        # For memory-2: next_state encodes [agent_action, opp_action, A_t-1, O_t-1]
+        if self.memory_scheme == 1:
+            # Memory-1: next_state encodes (agent_action, opp_action)
+            # Extract opponent action: opp_action = next_state % 2
+            opp_action = next_state % 2
+        else:
+            # Memory-2: next_state encodes [agent_action, opp_action, A_t-1, O_t-1]
+            # Extract opponent action from second bit: (next_state >> 2) & 1
+            opp_action = (next_state >> 2) & 1
+        
+        # Get reward from payoff matrix: PAYOFF_MATRIX[agent_action][opp_action][0]
+        # The [0] index gets the agent's payoff (first element of the tuple)
+        reward = PAYOFF_MATRIX[action][opp_action][0]
+        return float(reward) * -1
 
     def _decode_state_to_history(self, state: int) -> list:
         """
