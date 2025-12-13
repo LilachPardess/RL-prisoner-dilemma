@@ -79,9 +79,12 @@ class IteratedPrisonersDilemma(gym.Env):
 
     Configurable with different opponent strategies and observation schemes.
     """
+    # metadata: dict[str, Any] - Gymnasium metadata for rendering configuration
     metadata = {"render_modes": ["human"], "render_fps": 4}
 
-    # Map strategy names to their implementation function
+    # STRATEGY_MAP: dict[str, Callable] - Maps strategy names to their implementation functions
+    # Keys: "ALL-C", "ALL-D", "TFT", "IMPERFECT-TFT"
+    # Values: Static methods from OpponentStrategies class
     STRATEGY_MAP = {
         "ALL-C": OpponentStrategies.all_c,
         "ALL-D": OpponentStrategies.all_d,
@@ -96,32 +99,43 @@ class IteratedPrisonersDilemma(gym.Env):
         # --- Configuration ---
         if opponent_strategy not in self.STRATEGY_MAP:
             raise ValueError(f"Invalid strategy: {opponent_strategy}")
+        # opponent_strategy: Callable[[list], int] - Function that takes history and returns opponent action
+        # Takes history list and returns COOPERATE (0) or DEFECT (1)
         self.opponent_strategy = self.STRATEGY_MAP[opponent_strategy]
         
         if memory_scheme not in [1, 2]:
             raise ValueError("Memory scheme must be 1 or 2.")
+        # memory_scheme: int - Memory scheme type (1 for Memory-1, 2 for Memory-2)
         self.memory_scheme = memory_scheme
 
         # --- Gym Setup ---
-        # Action Space: {0: Cooperate, 1: Defect}
+        # action_space: spaces.Discrete(2) - Action space with 2 discrete actions
+        # {0: COOPERATE, 1: DEFECT}
         self.action_space = spaces.Discrete(2)
 
         # Observation Space: Depends on memory_scheme (Memory-1 or Memory-2)
         if self.memory_scheme == 1:
             # Memory-1: Previous outcome (Agent's move, Opponent's move) -> (0, 1, 2, 3)
             # C-C=0, C-D=1, D-C=2, D-D=3
+            # observation_space: spaces.Discrete(4) - 4 possible states encoding (agent_prev, opp_prev)
             self.observation_space = spaces.Discrete(4)
         else: # memory_scheme == 2
             # Memory-2: (Agent's move t-1, Opponent's move t-1, 
             #           Agent's move t-2, Opponent's move t-2)
             # A vector of 4 moves, each 0 or 1. Total 2^4 = 16 states.
             # We will represent this as a Discrete(16) space after encoding.
+            # observation_space: spaces.Discrete(16) - 16 possible states encoding [A_t-1, O_t-1, A_t-2, O_t-2]
             self.observation_space = spaces.Discrete(16)
         
-        # Stores the full history of moves (Agent, Opponent)
-        # e.g., [(C, C), (D, C), ...]
+        # history: list[tuple[int, int]] - Full history of moves as list of (agent_action, opponent_action) tuples
+        # Each tuple: (agent_action: int, opponent_action: int) where actions are COOPERATE (0) or DEFECT (1)
+        # Example: [(0, 0), (1, 0), ...] represents [(C, C), (D, C), ...]
         self.history = [] 
-        self.current_state = None # The state returned to the agent
+        # current_state: int | None - Current state observation returned to the agent
+        # For Memory-1: integer 0-3 encoding (agent_prev, opp_prev)
+        # For Memory-2: integer 0-15 encoding [A_t-1, O_t-1, A_t-2, O_t-2]
+        self.current_state = None
+        # current_turn: int - Current turn number in the episode (starts at 0)
         self.current_turn = 0
  
     def reset(self, seed: Optional[int] = None) -> Tuple[int, dict]: 
@@ -690,7 +704,7 @@ class IteratedPrisonersDilemma(gym.Env):
         # Get reward from payoff matrix: PAYOFF_MATRIX[agent_action][opp_action][0]
         # The [0] index gets the agent's payoff (first element of the tuple)
         reward = PAYOFF_MATRIX[action][opp_action][0]
-        return float(reward) * -1
+        return float(reward)
 
     def _decode_state_to_history(self, state: int) -> list:
         """
